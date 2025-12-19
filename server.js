@@ -79,6 +79,7 @@ app.use(cors({
       'https://snacks-front01-g1bl.vercel.app/',
       'https://snacks-front01.vercel.app',
       'https://snacks-front01.vercel.app/',
+      'https://vibebitesfrontend.vercel.app'
 
 
     ];
