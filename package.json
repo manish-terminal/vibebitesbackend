@@ -4,10 +4,10 @@
   "description": "Backend API for VIBE BITES e-commerce platform",
   "main": "server.js",
   "scripts": {
-    "start": "NODE_ENV=production PORT=3000 node server.js",
+    "start": "NODE_ENV=production PORT=$PORT node server.js",
     "dev": "NODE_ENV=development PORT=8080 nodemon server.js",
-    "prod": "NODE_ENV=production PORT=3000 node server.js",
-    "start:prod": "NODE_ENV=production PORT=3000 node server.js",
+    "prod": "NODE_ENV=production PORT=$PORT node server.js",
+    "start:prod": "NODE_ENV=production PORT=$PORT node server.js",
     "seed:products": "node seed/seedProducts.js",
     "build": "echo 'No build step required for Node.js'",
     "deploy": "eb deploy",
