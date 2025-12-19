@@ -1,0 +1,60 @@
+{
+  "name": "vibe-bites-backend",
+  "version": "1.0.0",
+  "description": "Backend API for VIBE BITES e-commerce platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "NODE_ENV=production PORT=3000 node server.js",
+    "dev": "NODE_ENV=development PORT=8080 nodemon server.js",
+    "prod": "NODE_ENV=production PORT=3000 node server.js",
+    "start:prod": "NODE_ENV=production PORT=3000 node server.js",
+    "seed:products": "node seed/seedProducts.js",
+    "build": "echo 'No build step required for Node.js'",
+    "deploy": "eb deploy",
+    "deploy:prod": "eb deploy production",
+    "eb:init": "eb init",
+    "eb:create": "eb create",
+    "eb:status": "eb status",
+    "eb:logs": "eb logs",
+    "eb:health": "eb health"
+  },
+  "keywords": [
+    "e-commerce",
+    "api",
+    "nodejs",
+    "express",
+    "mongodb"
+  ],
+  "author": "VIBE BITES",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^1.41.3",
+    "compression": "^1.7.4",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.21.2",
+    "express-mongo-sanitize": "^2.2.0",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.0.3",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "multer-storage-cloudinary": "^4.0.0",
+    "nodemailer": "^6.9.7",
+    "razorpay": "^2.9.6",
+    "stripe": "^14.7.0",
+    "validator": "^13.15.15",
+    "winston": "^3.11.0",
+    "xss": "^1.0.15"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}
