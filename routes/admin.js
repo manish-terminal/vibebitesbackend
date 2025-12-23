@@ -39,17 +39,17 @@ router.get('/shipping-fee', (req, res) => {
 // UPDATE shipping settings
 router.put('/shipping-fee', async (req, res) => {
   const { shippingFee, freeShippingThreshold } = req.body;
-  
+
   // Validate shipping fee
   if (shippingFee !== undefined && (typeof shippingFee !== 'number' || shippingFee < 0)) {
     return res.status(400).json({ success: false, message: 'Invalid shipping fee' });
   }
-  
+
   // Validate free shipping threshold
   if (freeShippingThreshold !== undefined && (typeof freeShippingThreshold !== 'number' || freeShippingThreshold < 0)) {
     return res.status(400).json({ success: false, message: 'Invalid free shipping threshold' });
   }
-  
+
   // Update values (in-memory update for now, not persistent across server restarts)
   if (shippingFee !== undefined) {
     appConfig.shippingFee = shippingFee;
@@ -57,14 +57,14 @@ router.put('/shipping-fee', async (req, res) => {
   if (freeShippingThreshold !== undefined) {
     appConfig.freeShippingThreshold = freeShippingThreshold;
   }
-  
+
   res.set({
     'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
     'Pragma': 'no-cache',
     'Expires': '0'
   });
-  res.json({ 
-    success: true, 
+  res.json({
+    success: true,
     shippingFee: appConfig.shippingFee,
     freeShippingThreshold: appConfig.freeShippingThreshold
   });
@@ -88,32 +88,33 @@ router.get('/banners', (req, res) => {
 router.put('/banners', async (req, res) => {
   try {
     const { banners } = req.body;
-    
+
     if (!Array.isArray(banners)) {
       return res.status(400).json({ success: false, message: 'Banners must be an array' });
     }
-    
+
     // Validate banner structure
     for (let i = 0; i < banners.length; i++) {
       const banner = banners[i];
       if (!banner.image || !banner.title || !banner.subtitle || !banner.button || !banner.link) {
-        return res.status(400).json({ 
-          success: false, 
-          message: `Banner ${i + 1} is missing required fields (image, title, subtitle, button, link)` 
+        return res.status(400).json({
+          success: false,
+          message: `Banner ${i + 1} is missing required fields (image, title, subtitle, button, link)`
         });
       }
     }
-    
+
     // Update banner configuration
     bannerConfig.banners = banners.map((banner, index) => ({
       id: index + 1,
       image: banner.image,
+      mobileImage: banner.mobileImage || banner.image, // Fallback to desktop image if mobile not provided
       title: banner.title,
       subtitle: banner.subtitle,
       button: banner.button,
       link: banner.link
     }));
-    
+
     logger.info(`Banner configuration updated by admin`);
     res.json({
       success: true,
@@ -179,9 +180,9 @@ router.post('/upload-image', upload.single('image'), async (req, res) => {
     // Get the uploaded file info
     const { filename, path: secureUrl, mimetype, size, format, width, height } = req.file;
     const isMainImage = req.body.isMainImage === 'true';
-    
+
     const imageUrl = secureUrl;
-    
+
     logger.info(`Image uploaded to Cloudinary: ${filename}, Size: ${size} bytes`);
 
     res.status(200).json({
@@ -211,14 +212,14 @@ router.post('/upload-image', upload.single('image'), async (req, res) => {
 router.get('/dashboard', async (req, res) => {
   try {
     console.log('Dashboard route hit by user:', req.user?.email, 'role:', req.user?.role);
-    
+
     const today = new Date();
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const startOfYear = new Date(today.getFullYear(), 0, 1);
 
     // Get counts with error handling for each query
     let totalUsers, totalProducts, totalOrders, totalRevenue;
-    
+
     try {
       totalUsers = await User.countDocuments({ role: 'user' });
     } catch (error) {
@@ -253,7 +254,7 @@ router.get('/dashboard', async (req, res) => {
 
     // Monthly stats with error handling
     let monthlyOrders, monthlyRevenue;
-    
+
     try {
       monthlyOrders = await Order.countDocuments({
         createdAt: { $gte: startOfMonth }
@@ -265,11 +266,11 @@ router.get('/dashboard', async (req, res) => {
 
     try {
       const monthlyRevenueResult = await Order.aggregate([
-        { 
-          $match: { 
+        {
+          $match: {
             createdAt: { $gte: startOfMonth },
             orderStatus: { $in: ['delivered'] }
-          } 
+          }
         },
         { $group: { _id: null, total: { $sum: '$total' } } }
       ]);
@@ -323,7 +324,7 @@ router.get('/dashboard', async (req, res) => {
 
     // Low stock alerts with error handling
     let lowStockProducts, outOfStockProducts;
-    
+
     try {
       lowStockProducts = await Product.find({
         $expr: {
@@ -389,9 +390,9 @@ router.get('/dashboard', async (req, res) => {
 router.get('/users', async (req, res) => {
   try {
     const { page = 1, limit = 10, search = '', role = '', status = '' } = req.query;
-    
+
     const query = { role: { $ne: 'admin' } };
-    
+
     if (search) {
       query.$or = [
         { firstName: { $regex: search, $options: 'i' } },
@@ -399,7 +400,7 @@ router.get('/users', async (req, res) => {
         { email: { $regex: search, $options: 'i' } }
       ];
     }
-    
+
     if (role) query.role = role;
     if (status === 'active') {
       query.isActive = true;
@@ -474,7 +475,7 @@ router.delete('/users/:id', async (req, res) => {
     const { id } = req.params;
 
     const user = await User.findByIdAndDelete(id);
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -544,8 +545,8 @@ router.get('/products', async (req, res) => {
         products: paginated,
         pagination: {
           currentPage,
-            totalPages: Math.ceil(total / perPage) || 1,
-            totalProducts: total
+          totalPages: Math.ceil(total / perPage) || 1,
+          totalProducts: total
         }
       }
     });
@@ -580,7 +581,7 @@ router.post('/products', async (req, res) => {
 router.put('/products/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const product = await Product.findByIdAndUpdate(
       id,
       req.body,
@@ -613,7 +614,7 @@ router.delete('/products/:id', async (req, res) => {
     const { id } = req.params;
 
     const product = await Product.findByIdAndDelete(id);
-    
+
     if (!product) {
       return res.status(404).json({
         success: false,
@@ -638,9 +639,9 @@ router.delete('/products/:id', async (req, res) => {
 router.get('/orders', async (req, res) => {
   try {
     const { page = 1, limit = 10, status = '', search = '' } = req.query;
-    
+
     const query = {};
-    
+
     if (status) query.orderStatus = status;
     if (search) {
       query.orderNumber = { $regex: search, $options: 'i' };
@@ -723,9 +724,9 @@ router.get('/coupons/:id', async (req, res) => {
 router.get('/coupons', async (req, res) => {
   try {
     const { page = 1, limit = 10, status = '' } = req.query;
-    
+
     const query = {};
-    
+
     if (status === 'active') query.isActive = true;
     if (status === 'inactive') query.isActive = false;
 
@@ -778,7 +779,7 @@ router.post('/coupons', async (req, res) => {
 router.put('/coupons/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const coupon = await Coupon.findByIdAndUpdate(
       id,
       req.body,
@@ -811,7 +812,7 @@ router.delete('/coupons/:id', async (req, res) => {
     const { id } = req.params;
 
     const coupon = await Coupon.findByIdAndDelete(id);
-    
+
     if (!coupon) {
       return res.status(404).json({
         success: false,
@@ -836,10 +837,10 @@ router.delete('/coupons/:id', async (req, res) => {
 router.get('/analytics/sales', async (req, res) => {
   try {
     const { period = 'month' } = req.query;
-    
+
     let startDate;
     const endDate = new Date();
-    
+
     switch (period) {
       case 'week':
         startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -945,12 +946,12 @@ router.get('/products/edit/:id', async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
     if (!product) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Product not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
       });
     }
-    
+
     res.json({
       success: true,
       data: { product }
