@@ -35,8 +35,8 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // Catch PUT requests without ID and provide helpful error
 router.put('/', (req, res) => {
-  res.status(400).json({ 
-    success: false, 
+  res.status(400).json({
+    success: false,
     message: 'Category ID is required. Use PUT /api/categories/:id to update a category.',
     hint: 'The URL should include the category ID, e.g., /api/categories/64f8a1b2c3d4e5f6a7b8c9d0'
   });
@@ -44,7 +44,27 @@ router.put('/', (req, res) => {
 
 // Admin: list all categories (active & inactive)
 router.get('/all', protect, admin, asyncHandler(async (req, res) => {
-  const categories = await Category.find().sort({ createdAt: -1 }).select('-__v');
+  const docs = await Category.find().sort({ createdAt: -1 }).select('-__v').lean();
+
+  const forwardedProto = req.get('x-forwarded-proto') || req.get('X-Forwarded-Proto');
+  const forwardedHost = req.get('x-forwarded-host') || req.get('X-Forwarded-Host');
+  const protocol = forwardedProto || req.protocol || 'http';
+  const host = forwardedHost || req.get('host');
+  const fallbackBase = process.env.BASE_URL || 'http://localhost:3000';
+  const baseUrl = (protocol && host) ? `${protocol}://${host}` : fallbackBase;
+
+  const categories = docs.map(cat => {
+    let image = cat.image || '';
+    if (image) {
+      if (image.startsWith('/uploads/')) {
+        image = `${baseUrl}${image}`;
+      }
+      // Also fix any hardcoded localhost URLs if we're not on localhost
+      image = image.replace(/^https?:\/\/localhost:3000/, baseUrl);
+    }
+    return { ...cat, image };
+  });
+
   res.json({ success: true, data: { categories } });
 }));
 
@@ -60,10 +80,10 @@ router.post('/upload-image', protect, admin, makeSingleUploader('categories', 'i
 
     // Get the uploaded file info
     const { filename, size } = req.file;
-    
+
     // Construct the public URL for the uploaded image
     const imageUrl = getFileUrl(req, filename, 'categories');
-    
+
     logger.info(`Category image uploaded successfully: ${filename}, Size: ${size} bytes`);
 
     res.status(200).json({
@@ -78,7 +98,7 @@ router.post('/upload-image', protect, admin, makeSingleUploader('categories', 'i
 
   } catch (error) {
     logger.error('Category image upload error:', error);
-    
+
     // Clean up uploaded file if there was an error
     if (req.file && req.file.path) {
       const fs = require('fs');
@@ -86,7 +106,7 @@ router.post('/upload-image', protect, admin, makeSingleUploader('categories', 'i
         if (err) logger.error('Error deleting file:', err);
       });
     }
-    
+
     res.status(500).json({
       success: false,
       message: error.message || 'Error uploading category image'
@@ -119,7 +139,7 @@ router.post('/', protect, admin, makeSingleUploader('categories', 'image'), [
       name: req.body.name.trim(),
       ...(req.body.description && req.body.description.trim() && { description: req.body.description.trim() })
     };
-    
+
     // Handle image - either from file upload or URL
     if (req.file) {
       // File was uploaded
@@ -128,7 +148,7 @@ router.post('/', protect, admin, makeSingleUploader('categories', 'image'), [
       // URL was provided
       categoryData.image = req.body.image.trim();
     }
-    
+
     const existing = await Category.findOne({ name: categoryData.name });
     if (existing) {
       return res.status(400).json({ success: false, message: 'Category already exists' });
@@ -172,11 +192,11 @@ router.put('/:id', protect, admin, makeSingleUploader('categories', 'image'), [
     if (!category) {
       return res.status(404).json({ success: false, message: 'Category not found' });
     }
-    
+
     // Clean and update only provided fields
     if (req.body.name !== undefined) category.name = req.body.name.trim();
     if (req.body.description !== undefined) category.description = req.body.description.trim() || null;
-    
+
     // Handle image update - either from file upload or URL
     if (req.file) {
       // File was uploaded
@@ -185,9 +205,9 @@ router.put('/:id', protect, admin, makeSingleUploader('categories', 'image'), [
       // URL was provided
       category.image = req.body.image.trim() || null;
     }
-    
+
     if (req.body.isActive !== undefined) category.isActive = req.body.isActive;
-    
+
     await category.save();
     res.json({ success: true, message: 'Category updated', data: { category } });
   } catch (e) {
@@ -202,8 +222,8 @@ router.put('/:id', protect, admin, makeSingleUploader('categories', 'image'), [
 
 // Catch PATCH requests without ID and provide helpful error
 router.patch('/', (req, res) => {
-  res.status(400).json({ 
-    success: false, 
+  res.status(400).json({
+    success: false,
     message: 'Category ID is required. Use PATCH /api/categories/:id/status to toggle category status.',
     hint: 'The URL should include the category ID, e.g., /api/categories/64f8a1b2c3d4e5f6a7b8c9d0/status'
   });
@@ -231,8 +251,8 @@ router.patch('/:id/status', protect, admin, [
 
 // Catch DELETE requests without ID and provide helpful error
 router.delete('/', (req, res) => {
-  res.status(400).json({ 
-    success: false, 
+  res.status(400).json({
+    success: false,
     message: 'Category ID is required. Use DELETE /api/categories/:id to delete a category.',
     hint: 'The URL should include the category ID, e.g., /api/categories/64f8a1b2c3d4e5f6a7b8c9d0'
   });
