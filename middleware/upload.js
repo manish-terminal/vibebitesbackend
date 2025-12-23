@@ -1,46 +1,19 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { getCloudinary } = require('../utils/cloudinary');
+const { logger } = require('../utils/logger');
 
-// Ensure uploads directory exists
+// Ensure uploads directory exists (legacy fallback)
 const uploadsDir = path.join(__dirname, '../uploads');
-const productsDir = path.join(uploadsDir, 'products');
-const bannersDir = path.join(uploadsDir, 'banners');
-const categoriesDir = path.join(uploadsDir, 'categories');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-if (!fs.existsSync(productsDir)) {
-  fs.mkdirSync(productsDir, { recursive: true });
-}
-if (!fs.existsSync(bannersDir)) {
-  fs.mkdirSync(bannersDir, { recursive: true });
-}
-if (!fs.existsSync(categoriesDir)) {
-  fs.mkdirSync(categoriesDir, { recursive: true });
-}
-
-// Factory: configure multer for a given subdirectory under /uploads
-const makeStorageFor = (subdir) => multer.diskStorage({
-  destination: function (req, file, cb) {
-    const dir = path.join(uploadsDir, subdir || 'products');
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    cb(null, dir);
-  },
-  filename: function (req, file, cb) {
-    // Generate unique filename with timestamp
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
-  }
-});
 
 // File filter for images only
 const fileFilter = (req, file, cb) => {
   const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-  
+
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
@@ -48,9 +21,12 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+// Memory storage for Cloudinary upload
+const storage = multer.memoryStorage();
+
 // Configure upload limits and options
 const upload = multer({
-  storage: makeStorageFor('products'),
+  storage: storage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB max file size
     files: 5 // max 5 files
@@ -58,22 +34,71 @@ const upload = multer({
   fileFilter: fileFilter
 });
 
-// Single image upload
-const uploadSingle = upload.single('image');
+// Helper to upload buffer to Cloudinary
+const uploadBufferToCloudinary = (buffer, folder, filename) => {
+  return new Promise((resolve, reject) => {
+    const cloudinary = getCloudinary();
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: `vibe-bites/${folder}`,
+        public_id: filename ? path.parse(filename).name : undefined,
+        resource_type: 'auto'
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+    stream.end(buffer);
+  });
+};
 
-// Multiple images upload
-const uploadMultiple = upload.array('images', 5);
+// Middleware to automatically upload files to Cloudinary
+const autoUploadToCloudinary = (subdir) => {
+  return async (req, res, next) => {
+    try {
+      if (!req.file && (!req.files || (Array.isArray(req.files) && req.files.length === 0) || (typeof req.files === 'object' && Object.keys(req.files).length === 0))) {
+        return next();
+      }
 
-// Product images upload (main + additional)
-const uploadProductImages = upload.fields([
-  { name: 'image', maxCount: 1 },
-  { name: 'images', maxCount: 4 },
-  { name: 'mainImageFile', maxCount: 1 },
-  { name: 'additionalImageFile_0', maxCount: 1 },
-  { name: 'additionalImageFile_1', maxCount: 1 },
-  { name: 'additionalImageFile_2', maxCount: 1 },
-  { name: 'additionalImageFile_3', maxCount: 1 }
-]);
+      // Handle single file
+      if (req.file) {
+        const result = await uploadBufferToCloudinary(req.file.buffer, subdir, req.file.originalname);
+        req.file.filename = result.secure_url; // Use Cloudinary URL as filename
+        req.file.path = result.secure_url;     // Use Cloudinary URL as path
+        logger.info(`Uploaded ${req.file.originalname} to Cloudinary: ${result.secure_url}`);
+      }
+
+      // Handle file array
+      if (Array.isArray(req.files)) {
+        await Promise.all(req.files.map(async (file) => {
+          const result = await uploadBufferToCloudinary(file.buffer, subdir, file.originalname);
+          file.filename = result.secure_url;
+          file.path = result.secure_url;
+          logger.info(`Uploaded ${file.originalname} to Cloudinary: ${result.secure_url}`);
+        }));
+      }
+
+      // Handle fields (object of arrays)
+      if (req.files && !Array.isArray(req.files)) {
+        const fields = Object.values(req.files);
+        for (const fieldFiles of fields) {
+          await Promise.all(fieldFiles.map(async (file) => {
+            const result = await uploadBufferToCloudinary(file.buffer, subdir, file.originalname);
+            file.filename = result.secure_url;
+            file.path = result.secure_url;
+            logger.info(`Uploaded ${file.originalname} to Cloudinary: ${result.secure_url}`);
+          }));
+        }
+      }
+
+      next();
+    } catch (error) {
+      logger.error('Cloudinary validation/upload error:', error);
+      res.status(500).json({ success: false, message: 'Image upload failed: ' + error.message });
+    }
+  };
+};
 
 // Error handling wrapper
 const handleUploadError = (uploadFn) => {
@@ -107,8 +132,16 @@ const handleUploadError = (uploadFn) => {
   };
 };
 
-// Generate file URL using the incoming request host/protocol (works behind proxies)
+// Generate file URL - modified to support full Cloudinary URLs
 const getFileUrl = (req, filename, subdir = 'products') => {
+  if (!filename) return '';
+
+  // If it's already a full URL (Cloudinary), return it
+  if (filename.startsWith('http://') || filename.startsWith('https://')) {
+    return filename;
+  }
+
+  // Fallback for legacy local files
   try {
     const forwardedProto = req.get && (req.get('x-forwarded-proto') || req.get('X-Forwarded-Proto'));
     const forwardedHost = req.get && (req.get('x-forwarded-host') || req.get('X-Forwarded-Host'));
@@ -123,9 +156,9 @@ const getFileUrl = (req, filename, subdir = 'products') => {
   }
 };
 
-// Create custom uploaders
+// Create custom uploaders (now memory based)
 const createUploader = (subdir) => multer({
-  storage: makeStorageFor(subdir),
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024,
     files: 5
@@ -133,7 +166,7 @@ const createUploader = (subdir) => multer({
   fileFilter
 });
 
-// Memory-based uploader (useful for piping to Cloudinary)
+// Memory-based uploader
 const createMemoryUploader = () => multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -145,7 +178,7 @@ const createMemoryUploader = () => multer({
 
 const makeSingleUploader = (subdir, fieldName = 'image') => {
   const u = createUploader(subdir).single(fieldName);
-  return handleUploadError(u);
+  return [handleUploadError(u), autoUploadToCloudinary(subdir)];
 };
 
 const makeMemorySingleUploader = (fieldName = 'image') => {
@@ -153,14 +186,33 @@ const makeMemorySingleUploader = (fieldName = 'image') => {
   return handleUploadError(u);
 };
 
+// Single image upload (default to products)
+const uploadSingle = [handleUploadError(upload.single('image')), autoUploadToCloudinary('products')];
+
+// Multiple images upload (default to products)
+const uploadMultiple = [handleUploadError(upload.array('images', 5)), autoUploadToCloudinary('products')];
+
+// Product images upload (main + additional)
+const uploadProductImages = [
+  handleUploadError(upload.fields([
+    { name: 'image', maxCount: 1 },
+    { name: 'images', maxCount: 4 },
+    { name: 'mainImageFile', maxCount: 1 },
+    { name: 'additionalImageFile_0', maxCount: 1 },
+    { name: 'additionalImageFile_1', maxCount: 1 },
+    { name: 'additionalImageFile_2', maxCount: 1 },
+    { name: 'additionalImageFile_3', maxCount: 1 }
+  ])),
+  autoUploadToCloudinary('products')
+];
+
 module.exports = {
   upload,
-  uploadSingle: handleUploadError(uploadSingle),
-  uploadMultiple: handleUploadError(uploadMultiple),
-  uploadProductImages: handleUploadError(uploadProductImages),
+  uploadSingle,
+  uploadMultiple,
+  uploadProductImages,
   getFileUrl,
   handleUploadError,
-  // new exports for dynamic subdirectories
   makeSingleUploader,
   createUploader,
   createMemoryUploader,
