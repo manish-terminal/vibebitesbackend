@@ -26,9 +26,9 @@ const config = {
     },
     rateLimit: {
       windowMs: 15 * 60 * 1000, // 15 minutes
-      general: 1000, // requests per window (increased for development)
-      auth: 50, // auth requests per window (increased for development)
-      upload: 10 // upload requests per window
+      general: 5000, // Increased from 1000 to prevent 429s (development)
+      auth: 500, // Increased from 50 (development)
+      upload: 200 // Increased from 10 (development)
     },
     shippingFee: 49, // default shipping fee in INR
     freeShippingThreshold: 500, // free shipping above this amount in INR
@@ -65,9 +65,9 @@ const config = {
     },
     rateLimit: {
       windowMs: 15 * 60 * 1000, // 15 minutes
-      general: 100, // requests per window
-      auth: 5, // auth requests per window
-      upload: 10 // upload requests per window
+      general: 5000, // requests per window - Reduced strictness for legitimate use
+      auth: 200, // auth requests per window - Increased to avoid locking out users
+      upload: 100 // upload requests per window - Increased for bulk uploads
     },
     shippingFee: 49, // default shipping fee in INR
     freeShippingThreshold: 500, // free shipping above this amount in INR
